@@ -8,7 +8,11 @@ from sklearn.linear_model import LinearRegression
 import numpy as np
 from datetime import datetime, timedelta
 import sqlite3
+import threading
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
+# Kullanıcı veritabanı oluşturma
 def create_database():
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
@@ -25,8 +29,19 @@ def create_database():
     conn.commit()
     conn.close()
 
+# Panel verimliliğini panel türüne göre hesaplama
+def get_panel_efficiency(panel_type):
+    efficiencies = {
+        "Monokristal": 0.18,  # Monokristal için örnek verimlilik
+        "Polikristal": 0.15,
+        "İnce Film": 0.12
+    }
+    return efficiencies.get(panel_type, 0.15)  # Varsayılan olarak Polikristal verimliliği
+
+# Veritabanını oluştur
 create_database()
 
+# Ana fonksiyon
 def main():
     root = tk.Tk()
     root.title("Güneş Enerjisi Potansiyeli ve Yapay Zeka Tahmini")
@@ -35,6 +50,7 @@ def main():
     notebook = ttk.Notebook(root)
     notebook.pack(expand=True, fill="both")
 
+    # Login Frame
     login_frame = ttk.Frame(notebook)
     notebook.add(login_frame, text="Kayıt/Oturum Aç")
 
@@ -99,6 +115,7 @@ def main():
     login_button = ttk.Button(login_frame, text="Oturum Aç", command=login_user)
     login_button.grid(row=2, column=1, padx=5, pady=10)
 
+    # Map Frame
     map_frame = ttk.Frame(notebook)
     notebook.add(map_frame, text="Harita")
 
@@ -114,6 +131,7 @@ def main():
     select_button = ttk.Button(map_frame, text="Konum Seç", command=select_location)
     select_button.pack(pady=10)
 
+    # Analyze Frame
     analyze_frame = ttk.Frame(notebook)
     notebook.add(analyze_frame, text="Analiz")
 
@@ -154,8 +172,15 @@ def main():
 
     results_scrollbar.config(command=results_text.yview)
 
-    ai_results_frame = ttk.Frame(analyze_frame)
-    ai_results_frame.place(relx=0.75, rely=0.0, relwidth=0.25, relheight=0.5)
+    # Yapay Zeka Tahminleri ve Grafikler Frame
+    ai_frame = ttk.Frame(notebook)
+    notebook.add(ai_frame, text="Yapay Zeka Tahminleri")
+
+    ai_graph_frame = ttk.Frame(ai_frame)
+    ai_graph_frame.pack(expand=True, fill=tk.BOTH)  # Grafik ekranın üst yarısını kaplar
+
+    ai_results_frame = ttk.Frame(ai_frame)
+    ai_results_frame.pack(expand=True, fill=tk.BOTH)  # Tahminler ekranın alt yarısını kaplar
 
     ai_results_label = ttk.Label(ai_results_frame, text="Yapay Zeka Tahminleri")
     ai_results_label.pack(pady=5)
@@ -202,7 +227,6 @@ def main():
                     results_text.insert(tk.END, f"{date_str}: {daily_energy:.2f} Wh\n")
 
                 plot_daily_total_radiation(daily_totals)
-
                 perform_ai_analysis(daily_totals, ai_results_text)
             else:
                 results_text.delete("1.0", tk.END)
@@ -212,54 +236,52 @@ def main():
             results_text.insert(tk.END, f"Hatalı giriş: {e}")
 
     def perform_ai_analysis(daily_totals, ai_results_text):
-        try:
-            dates = [datetime.strptime(d, "%Y%m%d") for d, _ in daily_totals]
-            radiation_values = [v for _, v in daily_totals]
+        def run_ai_analysis():
+            try:
+                dates = [datetime.strptime(d, "%Y%m%d") for d, _ in daily_totals]
+                radiation_values = [v for _, v in daily_totals]
 
-            model = LinearRegression()
-            X = np.array([(d - dates[0]).days for d in dates]).reshape(-1, 1)
-            y = np.array(radiation_values)
-            model.fit(X, y)
+                model = LinearRegression()
+                X = np.array([(d - dates[0]).days for d in dates]).reshape(-1, 1)
+                y = np.array(radiation_values)
+                model.fit(X, y)
 
-            future_days = 7
-            future_dates = [(dates[-1] + timedelta(days=i + 1)) for i in range(future_days)]
-            future_X = np.array([(d - dates[0]).days for d in future_dates]).reshape(-1, 1)
-            predictions = model.predict(future_X)
+                future_days = 7
+                future_dates = [(dates[-1] + timedelta(days=i + 1)).strftime("%Y-%m-%d") for i in range(future_days)]
+                predictions = model.predict(np.array([(len(dates) + i) for i in range(future_days)]).reshape(-1, 1))
 
-            ai_results_text.delete("1.0", tk.END)
-            ai_results_text.insert(tk.END, "Tahminler:\n")
+                # Yapay Zeka Tahminlerini Text kutusuna ekle
+                ai_results_text.delete(1.0, tk.END)
+                ai_results_text.insert(tk.END, "AI Model Sonuçları (Tahminler):\n")
+                for date, prediction in zip(future_dates, predictions):
+                    ai_results_text.insert(tk.END, f"{date}: {prediction:.2f} Wh/m^2\n")
 
-            for i, prediction in enumerate(predictions):
-                ai_results_text.insert(tk.END, f"{future_dates[i].strftime('%Y-%m-%d')}: {prediction:.2f} Wh/m^2\n")
+                # Grafik gösterme (ana thread'de)
+                fig, ax = plt.subplots(figsize=(8, 6))
+                ax.plot(dates, radiation_values, label="Gerçek Veri", color="blue")
+                ax.plot([dates[-1] + timedelta(days=i) for i in range(1, future_days + 1)], predictions, label="Tahminler", color="red", linestyle="--")
 
-        except Exception as e:
-            ai_results_text.delete("1.0", tk.END)
-            ai_results_text.insert(tk.END, f"Hata: {str(e)}")
+                ax.set_xlabel('Tarih')
+                ax.set_ylabel('Radyasyon (Wh/m^2)')
+                ax.set_title('Yapay Zeka İle Güneş Enerjisi Radyasyon Tahmini')
+                ax.legend()
 
-    calculate_button = ttk.Button(analyze_frame, text="Hesapla", command=lambda: analyze_location(
-        map_widget.get_position(), start_date.get(), end_date.get(),
-        panel_type_var.get(), panel_area_entry.get(), results_text
-    ))
-    calculate_button.grid(row=4, column=0, columnspan=2, padx=5, pady=10)
+                canvas = FigureCanvasTkAgg(fig, ai_graph_frame)
+                canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+                canvas.draw()
 
-    def check_login(event=None):
-        if not logged_in[0]:
-            selected_tab = notebook.index(notebook.select())
-            if selected_tab != 0:
-                notebook.select(0)
-                messagebox.showwarning("Uyarı", "Lütfen önce giriş yapın.")
+            except Exception as e:
+                ai_results_text.delete(1.0, tk.END)
+                ai_results_text.insert(tk.END, f"Yapay Zeka analizi hatası: {e}")
 
-    notebook.bind("<<NotebookTabChanged>>", check_login)
+        # Ana thread'de çalıştırmak için:
+        root.after(0, run_ai_analysis)
+
+    analyze_button = ttk.Button(analyze_frame, text="Analiz Yap", command=lambda: analyze_location(
+        (40.1568, 26.4113), start_date.get(), end_date.get(), panel_type_var.get(), panel_area_entry.get(), results_text))
+    analyze_button.grid(row=4, column=0, columnspan=2, pady=10)
 
     root.mainloop()
-
-def get_panel_efficiency(panel_type):
-    panel_efficiencies = {
-        "Monokristal": 0.20,
-        "Polikristal": 0.15,
-        "İnce Film": 0.10
-    }
-    return panel_efficiencies.get(panel_type, 0.15)
 
 if __name__ == "__main__":
     main()
