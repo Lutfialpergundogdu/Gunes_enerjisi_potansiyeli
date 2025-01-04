@@ -1,17 +1,17 @@
 import unittest
 import sys
-sys.path.append("..")  # Üst dizini modül arama yoluna ekleyin
+sys.path.append("..")  
 from data_processing import calculate_daily_total_radiation, calculate_solar_energy_potential
 
 class TestDataProcessing(unittest.TestCase):
 
     def test_calculate_daily_total_radiation_empty_data(self):
-        data = {}  # Boş veri
+        data = {}  
         result = calculate_daily_total_radiation(data)
-        self.assertEqual(result, [])  # Boş liste bekleniyor
+        self.assertEqual(result, [])  
 
     def test_calculate_daily_total_radiation_valid_data(self):
-        # NASA POWER API'den alınan örnek veri (gerçekçi bir örnek kullanın)
+
         data = {
             "properties": {
                 "parameter": {
@@ -41,9 +41,9 @@ class TestDataProcessing(unittest.TestCase):
             }
         }
         result = calculate_daily_total_radiation(data)
-        self.assertTrue(len(result) > 0)  # Sonuç listesinin boş olmaması bekleniyor
-        self.assertEqual(result[0][1], 3910)  # 20231015 için beklenen toplam
-        self.assertEqual(result[1][1], 4060)  # 20231016 için beklenen toplam
+        self.assertTrue(len(result) > 0)  
+        self.assertEqual(result[0][1], 3910)  
+        self.assertEqual(result[1][1], 4060)  
 
 
     def test_calculate_solar_energy_potential_valid_data(self):
