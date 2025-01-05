@@ -24,9 +24,6 @@ Kurulum:
 Proje dosyalarını indirin.
 
 Gerekli kütüphaneleri yükleyin:
-
-Bash
-
 pip install tkintermapview requests matplotlib scikit-learn tkcalendar
 main.py dosyasını çalıştırın.
 
